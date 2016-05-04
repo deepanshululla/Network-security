@@ -1,0 +1,235 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "socks.h"
+#include <stddef.h>
+#include <sys/socket.h>
+#include <arpa/inet.h> //inet_addr
+#include <unistd.h>    //write
+#include <openssl/conf.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+
+/*
+
+gcc -c socks.c -o socks.o && gcc -std=c99 -g -I/usr/local/openssl/include server_mac_then_encrypt.c socks.c -o server -L/usr/local/openssl/lib -lssl -lcrypto -ldl -fno-stack-protector
+*/
+
+struct cipher
+{
+	char value[256];
+	int length;
+};
+
+int sock;
+char ip_addr[] = "192.168.220.129";//ip address of server(localhost)
+int port_no=54000;//source port no.
+char response[2000];
+char *location;
+char file_contents[200];
+char mdString[20];
+unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
+int establishConnection();
+int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
+  unsigned char *iv, unsigned char *ciphertext);
+void handleErrors(void);
+
+char *readData(int sock,char *location);
+char *findHmac(char *data);
+struct cipher encryptAES(char *plaintext);
+
+
+void handleErrors(void)
+{
+  ERR_print_errors_fp(stderr);
+  abort();
+}
+
+
+int establishConnection(){
+	int serverSock,clientSock;
+	serverSock=createTcpSocket();
+	bindToIpv4(serverSock,ip_addr,port_no);
+	startListening(serverSock,2);
+	clientSock=acceptConnections(serverSock);
+	
+	return clientSock;
+}
+int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
+  unsigned char *iv, unsigned char *ciphertext)
+{
+  EVP_CIPHER_CTX *ctx;
+
+  int len;
+
+  int ciphertext_len;
+
+  /* Create and initialise the context */
+  if(!(ctx = EVP_CIPHER_CTX_new())) handleErrors();
+
+  /* Initialise the encryption operation. IMPORTANT - ensure you use a key
+   * and IV size appropriate for your cipher
+   * In this example we are using 256 bit AES (i.e. a 256 bit key). The
+   * IV size for *most* modes is the same as the block size. For AES this
+   * is 128 bits */
+  if(1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv))
+    handleErrors();
+
+  /* Provide the message to be encrypted, and obtain the encrypted output.
+   * EVP_EncryptUpdate can be called multiple times if necessary
+   */
+  if(1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len))
+    handleErrors();
+  ciphertext_len = len;
+
+  /* 
+    Finalise the encryption. Further ciphertext bytes may be written at
+   * this stage.
+   */
+  if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)) handleErrors();
+  ciphertext_len += len;
+
+  /* Clean up */
+  EVP_CIPHER_CTX_free(ctx);
+
+  return ciphertext_len;
+}
+
+
+char *readData(int sock,char *location){
+	/* declare a file pointer */
+	FILE *infile;
+	char buffer[200];
+	//char file_contents[200];
+	long numbytes,numpieces;
+	int count=0;
+	char *endMessage;
+	/* open an existing file for reading */
+	infile = fopen(location, "r");
+	 /* Get the number of bytes */
+	fseek(infile, 0L, SEEK_END);
+	numbytes = ftell(infile);
+	
+	/* reset the file position indicator to 
+	the beginning of the file */
+	fseek(infile, 0L, SEEK_SET);	
+	 
+	/* grab sufficient memory for the 
+	buffer to hold the text */
+	//buffer = (char*)calloc(numbytes, sizeof(char));	
+	fread(buffer, sizeof(char), numbytes, infile);
+	//memcpy(buff,buffer,numbytes);
+	strcpy(file_contents,buffer);
+	//free(buffer);
+	puts("Reading data. The file contains text:");
+	puts(file_contents);
+	return file_contents;
+	
+	
+}
+
+
+struct cipher encryptAES(char *plaintext){
+	//unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
+	struct cipher c;
+	c.length=0;
+	/* A 256 bit IV */
+	unsigned char *iv = (unsigned char *)"01234567890123456";
+	/*
+	 Buffer for ciphertext. Ensure the buffer is long enough for the
+	* ciphertext which may be longer than the plaintext, dependant on the
+	* algorithm and mode
+	*/
+	unsigned char ciphertext[170];
+	//puts(plaintext);
+	//char pt[1510];
+	
+	int decryptedtext_len=0, ciphertext_len=0;
+	int numpieces=0;
+	/* Initialise the library */
+	ERR_load_crypto_strings();
+	OpenSSL_add_all_algorithms();
+	OPENSSL_config(NULL);
+	//int numbytes=sizeof(plaintext);
+	
+	//char *data[numpieces];
+	int i=0;
+	int j=0;
+	int len=strlen(plaintext);
+	numpieces=(len/1500);
+	int count=0;
+	
+	//puts(data);
+	/* Encrypt the plaintext */
+  		
+	ciphertext_len = encrypt (plaintext,strlen ((char *)plaintext), key, iv,ciphertext);
+	
+	
+	//sendMsg(sock,str2);
+	//BIO_dump_fp (stdout, (const char *)ciphertext, ciphertext_len);
+	
+	//int c=1;
+	//int d=1;//introducing delay
+	//for ( c = 1 ; c <= 32767 ; c++ )
+       //{}
+	//sendMsg(sock,ciphertext);
+	puts("The Encrypted message is");
+	puts(ciphertext);
+	c.length=ciphertext_len;
+	strcpy(c.value,ciphertext);
+		
+	return c;
+//	
+}
+char *findHmac(char *data){
+	 // The key to hash
+	//unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
+	unsigned char *digest1;
+	digest1 = HMAC(EVP_sha1(), key, strlen(key), (unsigned char*)data, strlen(data), NULL, NULL);   
+	
+
+	for(int i = 0; i < 20; i++)
+	 {
+		sprintf(&mdString[i*2], "%02x", (unsigned int)digest1[i]);
+	}
+	puts("Computing HMAC");
+	puts(mdString);
+	return mdString;
+}
+
+int main(int argc , char *argv[])
+{
+	char *buff="";
+	struct cipher ciph;
+	char str2[1];
+	char str3[40];
+	unsigned char digest1[40];
+	sock=establishConnection();
+	while (recv(sock, response , 15000 , 0)<0){};
+	location="/home/deepanshu/netsecproj4/test/test1.txt";
+	if (strcmp(response,"GET /file2send.txt")==0){
+			buff=readData(sock,location);
+			//puts(buff);
+			
+			 //puts(ciph.value);
+			strcpy(digest1, findHmac(buff));  
+
+			
+			strcat(str2,"$Message:$");
+			strcat(str2,buff);
+			strcat(str2,"$HMAC:$");
+			strcat(str2,digest1);
+			ciph=encryptAES(str2);
+			sprintf(str3,"$Incominglength=$%d$EncryptedMessage:$",ciph.length);	
+			strcat(str3,ciph.value);
+			strcat(str3,"$");	
+			//puts("Sending Encrypted (msg + HMAC)");
+			//puts(str3);
+			sendMsg(sock,str3);
+			printf("Sent Successfully:length of data=%d ",(int)strlen(str3));
+			puts(str3);
+	
+	}
+	return 0;
+
+}
