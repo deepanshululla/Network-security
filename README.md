@@ -6,7 +6,7 @@ Implemented By Deepanshu Lulla
 CS6740 Spring 2016 Network Security Class Codes
 This is implementation of my codes for CS6740 Network security
 ##Project 1
-Implementing Secure File Transfer Protocols in C with OPENSSL 				                          Mar-Apr 2016
+###Implementing Secure File Transfer Protocols in C with OPENSSL 				                          Mar-Apr 2016
 •	Created self-signed RSA public/private keypair and used them to perform authenticated key agreement using Diffie-Hellman. 
 •	Computed keys for HMAC (with SHA1 hash) and a shared secret key and IV for AES 256 bit CBC encryption using the exchanged secret.
 •	Performed file transfer over TCP sockets by Encrypt and MAC (SSH), Encrypt then MAC (IPSec) and MAC then Encrypt (TLS).
